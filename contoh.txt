@@ -1,0 +1,69 @@
+#include <Servo.h>
+
+const int TRIG_PIN = 12;
+const int ECHO_PIN = 13;
+const int SERVO_PIN = 2;
+
+Servo myServo;
+
+// Batas sudut servo
+const int POS_TENGAH = 90;
+const int BATAS_KIRI = 75;
+const int BATAS_KANAN = 105;
+
+int posisi = POS_TENGAH;
+int arah = 1;
+
+unsigned long waktuSebelumnya = 0;
+
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  myServo.attach(SERVO_PIN, 1000, 2000);
+  myServo.write(POS_TENGAH);
+
+  delay(500);
+}
+
+void loop() {
+  // Membaca sensor ultrasonik
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  long durasi = pulseIn(ECHO_PIN, HIGH, 30000);
+  float jarak = durasi * 0.034 / 2.0;
+
+  bool objekDekat = (jarak > 0 && jarak <= 10);
+
+  if (objekDekat) {
+    Serial.println("Objek terdeteksi - Servo berhenti");
+  }
+  else {
+    if (millis() - waktuSebelumnya >= 30) {
+      waktuSebelumnya = millis();
+
+      posisi += arah;
+
+      if (posisi >= BATAS_KANAN) {
+        posisi = BATAS_KANAN;
+        arah = -1;
+      }
+      else if (posisi <= BATAS_KIRI) {
+        posisi = BATAS_KIRI;
+        arah = 1;
+      }
+
+      myServo.write(posisi);
+    }
+
+    Serial.println("Servo bergerak kanan-kiri");
+  }
+
+  delay(20);
+}
