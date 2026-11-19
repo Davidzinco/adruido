@@ -46,7 +46,8 @@ DEADBAND_ANGLE = 3.0               # Toleransi sudut untuk stop (mencegah bolak-
 
 
 def draw_hud(frame, face_res, virtual_angle, target_angle, pwm_cmd, motion_text, motion_color,
-             fps, connected, port, mode, stop_pwm, speed_ofs, is_inv):
+             fps, connected, port, mode, stop_pwm, speed_ofs, is_inv,
+             fan_mode="AUTO", fan_on=False):
     """Menggambar antarmuka visual HUD di atas frame kamera."""
     canvas = frame.copy()
     h, w, _ = canvas.shape
@@ -98,7 +99,7 @@ def draw_hud(frame, face_res, virtual_angle, target_angle, pwm_cmd, motion_text,
     cv2.putText(canvas, f"FPS: {fps:.0f}", (w - 60, 23), cv2.FONT_HERSHEY_SIMPLEX, 0.42, C_CYAN, 1, cv2.LINE_AA)
 
     # 4. Panel info
-    px, py0, pw, ph = 14, 50, 275, 160
+    px, py0, pw, ph = 14, 50, 275, 184
     sub = canvas[py0:py0 + ph, px:px + pw]
     ov = np.zeros_like(sub); ov[:] = C_BG
     cv2.addWeighted(sub, 0.18, ov, 0.82, 0, sub)
@@ -130,13 +131,26 @@ def draw_hud(frame, face_res, virtual_angle, target_angle, pwm_cmd, motion_text,
     cv2.circle(canvas, (ix, by_b + bh_b // 2), 5, C_GREEN if pwm_cmd == stop_pwm else C_CYAN, -1)
 
     inv_t = "INVERTED" if is_inv else "NORMAL"
+
+    # Status kipas: AUTO (ikut deteksi wajah) atau MANUAL ON/OFF
+    if fan_mode == "ON":
+        fan_label, fan_c = "MANUAL: ON", C_GREEN
+    elif fan_mode == "OFF":
+        fan_label, fan_c = "MANUAL: OFF", C_RED
+    else:
+        fan_label = "AUTO: ON" if fan_on else "AUTO: OFF"
+        fan_c = C_GREEN if fan_on else C_GRAY
+
+    cv2.putText(canvas, "KIPAS:", (px + 10, py0 + 142), cv2.FONT_HERSHEY_SIMPLEX, 0.42, C_GRAY, 1, cv2.LINE_AA)
+    cv2.putText(canvas, fan_label, (px + 140, py0 + 142), cv2.FONT_HERSHEY_SIMPLEX, 0.45, fan_c, 1, cv2.LINE_AA)
+
     cv2.putText(canvas, f"Limit:+-20deg | PWM:{stop_pwm} | Spd:{speed_ofs} | {inv_t}",
-                (px + 10, py0 + 148), cv2.FONT_HERSHEY_SIMPLEX, 0.32, C_GRAY, 1, cv2.LINE_AA)
+                (px + 10, py0 + 168), cv2.FONT_HERSHEY_SIMPLEX, 0.32, C_GRAY, 1, cv2.LINE_AA)
 
     # 5. Footer
     cv2.rectangle(canvas, (0, h - 28), (w, h), C_BG, -1)
     cv2.line(canvas, (0, h - 28), (w, h - 28), (60, 65, 75), 1)
-    cv2.putText(canvas, "[A/D] Putar Kiri/Kanan | [SPASI] Auto/Manual | [I] Invert | [R] Reset | [Q] Keluar",
+    cv2.putText(canvas, "[A/D] Putar | [SPASI] Auto/Manual | [K] Kipas | [I] Invert | [R] Reset | [Q] Keluar",
                 (12, h - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.36, C_WHITE, 1, cv2.LINE_AA)
 
     return canvas
@@ -174,6 +188,7 @@ def main():
     print("  [A] atau [Arrow Left]  : Putar servo ke KIRI (Manual)")
     print("  [D] atau [Arrow Right] : Putar servo ke KANAN (Manual)")
     print("  [SPASI]                : Beralih MODE AUTO / MANUAL")
+    print("  [K]                    : Kipas AUTO -> ON -> OFF (manual)")
     print("  [I]                    : Balik arah putaran (Invert)")
     print("  [R]                    : Reset posisi ke tengah (90 deg)")
     print("  [ [ / ] ]              : Kalibrasi Stop PWM (+/- 1)")
@@ -188,6 +203,7 @@ def main():
     target_angle = CENTER_ANGLE
     is_inverted = False
     control_mode = "MANUAL"  # Mulai dari MANUAL agar bisa tes arah dulu
+    fan_mode = "AUTO"        # AUTO = ikut deteksi wajah, ON / OFF = manual
 
     prev_time = time.time()
     fps = 30.0
@@ -241,12 +257,17 @@ def main():
             pressing_right = False
 
             if key != -1:
-                # Keluar
+                # Keluar (paksa kipas OFF langsung)
                 if key in [ord('q'), ord('Q'), 27]:
-                    arduino.send_data(pan=stop_pwm, tilt=90, gesture=0)
+                    arduino.send_data(pan=stop_pwm, tilt=90, gesture=0, fan=3)
                     break
 
-                # Toggle mode
+                # Siklus mode kipas: AUTO -> ON -> OFF -> AUTO
+                elif key in [ord('k'), ord('K')]:
+                    fan_mode = {"AUTO": "ON", "ON": "OFF", "OFF": "AUTO"}[fan_mode]
+                    print(f"[KIPAS] Mode -> {fan_mode}")
+
+                # Toggle mode servo
                 elif key == 32:  # SPASI
                     control_mode = "MANUAL" if control_mode == "AUTO" else "AUTO"
                     print(f"[MODE] -> {control_mode}")
@@ -386,8 +407,23 @@ def main():
                         motion_text = "AUTO: PUTAR KIRI"
                         motion_color = (0, 220, 255)
 
-            # Kirim PWM ke Arduino
-            arduino.send_data(pan=pwm_cmd, tilt=90, gesture=0)
+            # Tentukan perintah kipas:
+            #   0 = auto, wajah tidak ada  -> OFF setelah jeda
+            #   1 = auto, wajah terdeteksi -> ON
+            #   2 = manual ON  (paksa nyala)
+            #   3 = manual OFF (paksa mati)
+            if fan_mode == "ON":
+                fan_cmd = 2
+                fan_on = True
+            elif fan_mode == "OFF":
+                fan_cmd = 3
+                fan_on = False
+            else:
+                fan_on = bool(face_res.face_detected)
+                fan_cmd = 1 if fan_on else 0
+
+            # Kirim PWM ke Arduino + perintah relay kipas (D3)
+            arduino.send_data(pan=pwm_cmd, tilt=90, gesture=0, fan=fan_cmd)
             arduino.read_incoming()
 
             # Debug log setiap 0.5 detik (supaya bisa periksa di terminal)
@@ -398,13 +434,14 @@ def main():
             # Gambar HUD
             out = draw_hud(frame, face_res, virtual_angle, target_angle, pwm_cmd,
                            motion_text, motion_color, fps, arduino.is_connected,
-                           arduino.port_name or "N/A", control_mode, stop_pwm, speed_offset, is_inverted)
+                           arduino.port_name or "N/A", control_mode, stop_pwm, speed_offset, is_inverted,
+                           fan_mode, fan_on)
             cv2.imshow(window_name, out)
 
     except KeyboardInterrupt:
         pass
     finally:
-        arduino.send_data(pan=stop_pwm, tilt=90, gesture=0)
+        arduino.send_data(pan=stop_pwm, tilt=90, gesture=0, fan=3)
         time.sleep(0.05)
         cap.release()
         cv2.destroyAllWindows()

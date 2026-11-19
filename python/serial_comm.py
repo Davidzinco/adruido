@@ -92,10 +92,12 @@ class ArduinoSerial:
             self.is_connected = False
             return False
 
-    def send_data(self, pan: int, tilt: int, gesture: int = 0) -> bool:
+    def send_data(self, pan: int, tilt: int, gesture: int = 0, fan: Optional[int] = None) -> bool:
         """
         Mengirimkan paket koordinat dan kode gesture ke Arduino.
         Format Paket: <PAN,TILT,GESTURE>\n
+        Jika `fan` diisi (0/1), format menjadi <PAN,TILT,GESTURE,FAN>\n
+        sehingga Arduino bisa menyalakan relay kipas (pin D3).
         """
         now = time.time()
         # Batasi frekuensi kirim untuk mencegah buffer overflow
@@ -108,7 +110,12 @@ class ArduinoSerial:
         tilt = max(0, min(180, int(tilt)))
         gesture = int(gesture)
 
-        packet = f"<{pan},{tilt},{gesture}>\n"
+        if fan is None:
+            packet = f"<{pan},{tilt},{gesture}>\n"
+        else:
+            # 0=auto off, 1=auto on (wajah), 2=manual ON, 3=manual OFF
+            fan_flag = max(0, min(3, int(fan)))
+            packet = f"<{pan},{tilt},{gesture},{fan_flag}>\n"
         self.last_sent_packet = packet.strip()
         self.last_send_time = now
 

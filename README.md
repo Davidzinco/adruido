@@ -97,7 +97,7 @@ adruido/
 │   └── requirements.txt              # Daftar paket library Python
 ├── CIRCUIT_DIAGRAM.md                # Dokumentasi detail skema dan pinout
 ├── README.md                         # Dokumentasi panduan lengkap
-└── run.bat                           # Launcher 1-klik untuk Windows
+└── run_test_servo.bat                # Launcher 1-klik untuk Windows
 ```
 
 ---
@@ -118,7 +118,7 @@ adruido/
 
 #### Cara Cepat (Windows):
 Cukup **klik ganda (double-click)** pada file:
-`run.bat`
+`run_test_servo.bat`
 
 #### Cara Manual melalui Terminal:
 1. Buka Terminal / PowerShell di folder proyek ini:

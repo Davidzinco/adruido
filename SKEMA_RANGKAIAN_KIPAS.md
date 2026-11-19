@@ -96,7 +96,7 @@ flowchart TD
 ### Langkah 2: Jalankan Program Python di Komputer
 1. Pastikan webcam laptop tidak sedang dibuka oleh aplikasi lain (seperti Zoom / Teams).
 2. Double-click file:
-   `run_kipas.bat`
+   `run_test_servo.bat`
    *(atau jalankan via terminal: `.\.venv\Scripts\python.exe python\main_kipas.py`)*
 3. Jendela visual (*HUD*) akan terbuka:
    - Wajah Anda akan dideteksi dan diberi tanda kotak hijau/kuning.
